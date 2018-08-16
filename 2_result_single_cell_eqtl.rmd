@@ -219,16 +219,7 @@ num.new.celltype.genes <- celltype.genes %>% anti_join(bulk.genes) %>% nrow()
 
 ### Our factored eQTL method identifies celltype of action in `r num.int(tot.celltype.tab$heritable.genes)` genes (celltype-level eQTL discovery)
 
-We can deconvolve active cell types of the tissue-level eQTL effects on `r nrow(heritable.bulk) %>% num.int()` genes with our previous results on the estimated fraction of 7 brain cell types on the Brain DLPFC samples (He _et al._ in preparation; Mathys _et al._, in review).  The effect size deconvolution by our factored eQTL method is almost equivalent to sub-sampling of individuals.  Our deconvolution models identify clear celltype specificities on `r num.int(tot.celltype.tab$heritable.genes)` genes out of the total heritable ones.
-
-```{r Celltype_Decompose, as.is = TRUE}
-tab.celltype <- count.celltype.tab %>%
-    mutate(heritable.genes = num.int(heritable.genes)) %>%
-    mutate(num.eQTLs = num.int(num.eQTLs)) %>%
-    flextable::regulartable()
-tab.celltype <- flextable::bold(tab.celltype, part = 'header')
-tab.celltype
-```
+We can deconvolve active cell types of the tissue-level eQTL effects on `r nrow(heritable.bulk) %>% num.int()` genes with our previous results on the estimated fraction of 7 brain cell types on the Brain DLPFC samples (He _et al._ in preparation; Mathys _et al._, in review).  The effect size deconvolution by our factored eQTL method is almost equivalent to sub-sampling of individuals.  Our deconvolution models identify clear celltype specificities on `r num.int(tot.celltype.tab$heritable.genes)` genes out of the total heritable ones (Table. xx).
 
 ```{r Fig_Num_Active_Celltype, fig.cap = '__Histogram of the number of active celltypes within a gene__', fig.width = 3, fig.height = 3}
 ################################################################
@@ -479,6 +470,16 @@ gg.save(filename = paste0(fig.dir, '/Fig_GO_MF.pdf'), plot = plt.go.mf,
 
 
 # Tables
+
+```{r Celltype_Decompose, as.is = TRUE}
+tab.celltype <- count.celltype.tab %>%
+    mutate(heritable.genes = num.int(heritable.genes)) %>%
+    mutate(num.eQTLs = num.int(num.eQTLs)) %>%
+    flextable::regulartable()
+tab.celltype <- flextable::bold(tab.celltype, part = 'header')
+tab.celltype
+```
+__Table.__ Number of heritable genes.
 
 
 ```{r Tab_GO_BP, results = 'asis'}
