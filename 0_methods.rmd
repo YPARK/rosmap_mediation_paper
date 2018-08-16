@@ -42,12 +42,12 @@ GWAS summary effect sizes $\hat{\boldsymbol{\theta}} \equiv
 from the same multivariate effects $\boldsymbol{\theta}$ of
 individual-level multivariate GWAS model ([@eq:mvn]).
 
-$$ \hat{\boldsymbol{\theta}} \sim \mathcal{N}\!\left(S R S^{-1} \boldsymbol{\theta}, SRS \right),$$ {#eq:rss}
+$$\hat{\boldsymbol{\theta}} \sim \mathcal{N}\!\left(S R S^{-1} \boldsymbol{\theta}, SRS \right),$$ {#eq:rss}
 
 where we denote the ${p{\times}p}$ linkage disequilibrium (LD) matrix
 $R$ and the diagonal matrix of expected squares, $S$ with each element
 $S_{jj} = \sqrt{\mathbb{E}[\hat{\theta}_{j}^{2}]} =
-\sqrt{{\hat\theta}_{j}^{2}/n + \sigma_{j}^{2}}$.  In practice we
+\sqrt{\hat{\theta}_{j}^{2}/n + \sigma_{j}^{2}}$.  In practice we
 estimate the LD matrix $\hat{R}$ from a standardized genotype matrix
 of reference cohort by taking crossproduct, $\hat{R}=X^{\top}X/(n-1)$.
 While other methods regularize $\hat{R}$ matrix by adding ridge
