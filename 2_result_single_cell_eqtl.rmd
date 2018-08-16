@@ -1,0 +1,508 @@
+---
+bibliography: mediation.bib
+csl: apa.csl
+---
+
+```{r GlobOpt, include = FALSE}
+fig.dir <- './Fig/2_single_cell_eqtl/'
+dir.create(fig.dir, recursive = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.path = fig.dir, fig.width = 4, fig.height = 4)
+library(dplyr)
+library(tidyr)
+library(readr)
+source('Util-Figure.R')
+
+num.int <- function(x) format(x, big.mark = ',')
+num.sci <- function(x, d=2) format(x, scientific = TRUE, digits = d)
+num.round <- function(x, d=2) round(x, d)
+fast.similarity <- function(...) suppressMessages(text2vec::sim2(...))
+################################################################
+```
+
+```{r}
+## Read eQTL data with all the significant SNPs (lodds > 0 in any)
+ct <- c('bulk', 'ast', 'inh', 'ex', 'oli', 'mic', 'end', 'opc')
+ct.names <- c('Brain_DLPFC', 'Astrocyte', 'Inhibitory_Neuron', 'Excitatory_Neuron', 'Oligodendrocyte', 'Microglia', 'Endothelial', 'Oligo_Progenitor')
+
+eqtl.file <- './eqtl_results/rosmap_multivar_eqtl_combined.txt.gz'
+eqtl.tab <- read_tsv(eqtl.file) %>%
+    mutate(celltype = gsub(celltype, pattern = '_tf', replacement = '')) %>%
+    mutate(celltype = factor(celltype, ct, ct.names)) %>%
+    mutate(celltype = as.character(celltype))
+
+## A list of protein coding genes
+rosmap.genes <- read_tsv('rosmap_rows.txt.gz') %>%
+    separate(col = tracking_id, into = c('ensg', 'remove'), sep = '[.]') %>%
+    select(-remove)
+
+coding.genes <- read_tsv('gencode.v26.coding.txt.gz',
+                         col_names=c('chr', 'tss', 'tes', 'strand', 'ensg', 'hgnc'),
+                         col_types='ciiccc_')
+coding.ensg <- coding.genes %>% select(ensg) %>%
+    separate(col=ensg, into=c('ensg','remove'), sep='[.]') %>%
+    select(ensg) %>% unlist(use.names = FALSE)
+################################################################
+```
+
+```{r GeneOntologyFunctions}
+## Summary of enrichment within cluster
+summary.enrichment.stat <- function(tab) {
+    ## What can we control beyond the set size?
+
+    ## calculate hypergeometric p-value
+    ## phyper(q, m, n, k, lower.tail = TRUE, log.p = FALSE)
+    ##    q: vector of quantiles representing the number of white balls
+    ##       (drawn without replacement from an urn which contains both
+    ##       black and white balls).
+    ##    m: the number of white balls in the urn.
+    ##    n: the number of black balls in the urn.
+    ##    k: the number of balls drawn from the urn.
+    ##    p: probability, it must be between 0 and 1.
+
+    m <- max(tab$go.size)         ## white balls
+    n <- max(tab$ntot) - m        ## black balls
+    k <- max(tab$n.drawn)         ## balls drawn
+    q <- length(unique(tab$gene)) ## whilte balls drawn
+
+    pval <- phyper(q, m, n, k, lower.tail = FALSE)
+
+    data.frame(n.white = m,
+               n.drawn = k,
+               n.overlap = q,
+               pval = pval)
+}
+
+run.enrichment <- function(genes.tot, gene.tab, min.go = 10, max.go = 500){
+
+    ensembl <- biomaRt::useEnsembl(biomart='ensembl',
+                                   dataset = 'hsapiens_gene_ensembl',
+                                   version = 79)
+
+    go.attr <- c('ensembl_gene_id', 'go_id', 'name_1006', 'namespace_1003')
+
+    go.bm <- biomaRt::getBM(filters = 'ensembl_gene_id', values = genes.tot,
+                            attributes = go.attr,
+                            mart = ensembl)
+
+    go.tab <- go.bm %>% (function(tab) {
+        names(tab) <- c('gene', 'go', 'go.name', 'go.onto');
+        return(tab) }) %>%
+            filter(nchar(go.name) > 0)
+
+    go.size.tab <- go.tab %>%
+        group_by(go) %>%
+            summarize(go.size = n()) %>%
+                as.data.frame()
+
+    ntot <- go.tab %>% dplyr::select(gene) %>%
+        unique() %>% nrow()
+
+    gene.cluster <- gene.tab %>%
+        filter(gene %in% unique(go.tab$gene)) %>%
+            as.data.frame()
+    
+    cluster.size.tab <-
+        gene.cluster %>%
+            group_by(cluster) %>%
+                summarize(n.drawn = n())
+
+    ret <-
+        gene.cluster %>%
+            left_join(go.tab, by = 'gene') %>%
+                left_join(go.size.tab, by = 'go') %>%
+                    mutate(ntot = ntot) %>%
+                        filter(go.size >= min.go, go.size <= max.go) %>%
+                            left_join(cluster.size.tab, by = 'cluster') %>%
+                                group_by(cluster, go, go.name, go.onto) %>%
+                                    dplyr::do(summary.enrichment.stat(.)) %>%
+                                        as.data.frame()
+}
+```
+
+## Learning regulatory mechanisms in the brain tissues and 7 cell types
+
+```{r}
+################################################################
+lodds.cutoff <- 0
+pip.cutoff <- 1/(1 + exp(-lodds.cutoff))
+
+heritable.bulk <- eqtl.tab %>%
+    filter(celltype == 'Brain_DLPFC', lodds > lodds.cutoff) %>%
+    select(med.id) %>% unique()
+
+heritable.bulk.coding <- heritable.bulk %>%
+    filter(med.id %in% coding.ensg)
+
+nsnps.bulk <- 
+    eqtl.tab %>% filter(celltype == 'Brain_DLPFC') %>%
+    filter(lodds > lodds.cutoff) %>%
+    group_by(med.id) %>%
+    summarize(nsnp = length(unique(snp.loc)))
+################################################################
+```
+
+### `r nrow(heritable.bulk) %>% num.int()` genes are heritable in the Brain dorsolateral prefrontal cortex (tissue-level eQTL discovery)
+
+We estimate local genetic regulatory models, fitting sparse linear Gaussian regression models with the Bayesian spike-slab prior [@Mitchell1988-cf; @Carbonetto2012-bb], including all the common variants observed within independent linkage disequilibrium (LD) blocks [@Berisa2016-cm].  Of the `r nrow(rosmap.genes) %>% num.int()` genes measured in the ROSMAP RNA-seq data [@Mostafavi2018-ak; @Ng2017-xm], we identify that `r nrow(heritable.bulk) %>% num.int()` genes are strongly heritable with posterior inclusion probability (PIP) cutoff $>$ `r num.round(pip.cutoff)`; of them, `r nrow(heritable.bulk.coding) %>% num.int()` are protein coding genes according to the GENCODE version 26.
+Per gene, we observe strong fixed effects on average `r mean(nsnps.bulk$nsnp) %>% num.round()` SNPs (SD = `r sd(nsnps.bulk$nsnp) %>% num.round()`) and nearly `r (100 * mean(nsnps.bulk$nsnp > 1)) %>% num.round()`% of genes are robustly associated with two or more SNPs.
+
+
+```{r}
+################################################################
+tot.celltype.tab <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff) %>%
+    filter(celltype != 'Brain_DLPFC') %>%
+    select(med.id, chr, snp.loc) %>% unique() %>%
+    mutate(snp = paste0(chr, ':', snp.loc)) %>%
+    summarize(heritable.genes = length(unique(med.id)),
+              num.eQTLs = length(unique(snp))) %>%
+    as.data.frame()
+
+active.celltype.tab <- 
+    eqtl.tab %>%
+    filter(lodds > lodds.cutoff, celltype != 'Brain_DLPFC') %>%
+    select(med.id, celltype) %>% unique() %>%
+    group_by(med.id) %>%
+    summarize(active.celltypes = length(unique(celltype)))
+
+count.celltype.tab <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff) %>%
+    select(med.id, chr, snp.loc, celltype) %>% unique() %>%
+    mutate(snp = paste0(chr, ':', snp.loc)) %>%
+    group_by(celltype) %>%
+    summarize(heritable.genes = length(unique(med.id)),
+              num.eQTLs = length(unique(snp))) %>%
+    arrange(desc(heritable.genes)) %>%
+    as.data.frame()
+
+.count.ct <- function(.ct) {
+    count.celltype.tab %>% filter(celltype == .ct) %>%
+        select(heritable.genes) %>%
+            unlist()
+}
+
+active.celltype.summary <- active.celltype.tab %>%
+    group_by(active.celltypes) %>%
+    summarize(count = n())
+
+single.celltype.genes <- active.celltype.summary %>%
+    filter(active.celltypes == 1) %>%
+    select(count) %>%
+    unlist()
+
+bulk.snps <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff, celltype == 'Brain_DLPFC') %>%
+    select(chr, snp.loc) %>% unique()
+
+celltype.snps <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff, celltype != 'Brain_DLPFC') %>%
+    select(chr, snp.loc) %>% unique()
+
+num.bulk.snps <- bulk.snps %>% nrow()
+num.celltype.snps <- celltype.snps %>% nrow()
+num.new.celltype.snps <- celltype.snps %>% anti_join(bulk.snps) %>% nrow()
+
+bulk.genes <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff, celltype == 'Brain_DLPFC') %>%
+    select(med.id) %>% unique()
+
+celltype.genes <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff, celltype != 'Brain_DLPFC') %>%
+    select(med.id) %>% unique()
+
+num.bulk.genes <- bulk.genes %>% nrow()
+num.celltype.genes <- celltype.genes %>% nrow()
+num.new.celltype.genes <- celltype.genes %>% anti_join(bulk.genes) %>% nrow()
+################################################################
+```
+
+### Our factored eQTL method identifies celltype of action in `r num.int(tot.celltype.tab$heritable.genes)` genes (celltype-level eQTL discovery)
+
+We can deconvolve active cell types of the tissue-level eQTL effects on `r nrow(heritable.bulk) %>% num.int()` genes with our previous results on the estimated fraction of 7 brain cell types on the Brain DLPFC samples (He _et al._ in preparation; Mathys _et al._, in review).  The effect size deconvolution by our factored eQTL method is almost equivalent to sub-sampling of individuals.  Our deconvolution models identify clear celltype specificities on `r num.int(tot.celltype.tab$heritable.genes)` genes out of the total heritable ones.
+
+```{r Celltype_Decompose, as.is = TRUE}
+tab.celltype <- count.celltype.tab %>%
+    mutate(heritable.genes = num.int(heritable.genes)) %>%
+    mutate(num.eQTLs = num.int(num.eQTLs)) %>%
+    flextable::regulartable()
+tab.celltype <- flextable::bold(tab.celltype, part = 'header')
+tab.celltype
+```
+
+```{r Fig_Num_Active_Celltype, fig.cap = '__Histogram of the number of active celltypes within a gene__', fig.width = 3, fig.height = 3}
+################################################################
+.aes <- aes(x = as.numeric(active.celltypes), y = count)
+plt.active.celltype <-
+    gg.plot(active.celltype.summary, .aes) +
+    geom_bar(stat = 'identity') +
+    scale_y_log10(breaks = active.celltype.summary$count) +
+    xlab('Number of active cell-types')
+print(plt.active.celltype)
+
+gg.save(filename = paste0(fig.dir, '/Fig_Num_Active_Celltype.pdf'),
+        plot = plt.active.celltype, width = 3, height = 3)
+################################################################
+```
+
+```{r Fig_Celltype_Jaccard, fig.width = 4, fig.height = 5, fig.cap = '__Jaccard coefficients of genes sharing between celltypes__'}
+library(Matrix)
+library(methods)
+
+jaccard.mat <- eqtl.tab %>%
+    filter(lodds > lodds.cutoff) %>%
+    select(med.id, celltype) %>%
+    unique() %>%
+    mutate(val = 1) %>%
+    spread(key = celltype, value = val, fill = 0) %>%
+    as.data.frame() %>%
+    select(-med.id) %>%
+    t() %>%
+    (function(x) as(x, 'sparseMatrix')) %>%
+    fast.similarity(method = 'jaccard') %>%
+    as.matrix()
+
+jaccard.tab <- jaccard.mat %>%
+    as.data.frame() %>%
+    (function(mat) { mat %>% mutate(row = rownames(mat)) }) %>%
+    gather(key = 'col', value = 'jaccard', -row)
+
+ct.order <- order.pair(jaccard.tab %>% rename(weight = jaccard))
+
+celltype.jaccard.values <- jaccard.mat %>% as.data.frame() %>%
+    (function(mat) { mat %>% mutate(row = rownames(mat)) }) %>%
+    gather(key = 'col', value = 'jaccard', -row) %>%
+    filter(row > col) %>% select(jaccard) %>% unlist()
+
+jaccard.scale <- scale_fill_gradientn(colors = c('white', 'orange', 'red'),
+                                      breaks = c(0, 0.1, 0.25, 0.5, 1),
+                                      limits = c(0, 1),
+                                      trans = 'sqrt')
+
+plt.celltype.jaccard <-
+    (jaccard.tab %>%
+     mutate(row = factor(row, ct.order$row)) %>%
+     mutate(col = factor(col, ct.order$col))) %>%
+    gg.plot(aes(x = row, y = col, fill = jaccard)) +
+    geom_tile(color = 'gray') +
+    jaccard.scale +
+    theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1),
+          axis.title = element_blank(),
+          legend.position = 'bottom',
+          legend.key.height = unit(.5, 'lines'),
+          legend.key.width = unit(2, 'lines'))
+
+count.scale <- scale_y_continuous(trans = 'sqrt')
+
+plt.celltype.count <- 
+    (count.celltype.tab %>%
+     mutate(celltype = factor(celltype, ct.order$row))) %>%
+    gg.plot(aes(x = celltype, y = heritable.genes)) +
+    geom_bar(stat = 'identity', fill = 'gray50') +
+    geom_text(aes(label = heritable.genes - 10), size = 2) +
+    ylab('# genes') +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_blank())
+
+plt <- grid.vcat(list(plt.celltype.count, plt.celltype.jaccard),
+                 heights = c(.5, 2.5))
+
+gg.save(filename = paste0(fig.dir, '/Fig_Celltype_Jaccard.pdf'),
+        plot = plt, width = 4, height = 5)
+```
+
+Since we applied sparse Bayesian prior probability on the genetic effects of factored eQTL models.  We found `r num.int(single.celltype.genes)` genes are only active in a single cell type (`r num.round(100 * (single.celltype.genes / tot.celltype.tab$heritable.genes))`%).  Interestingly we discovered that `r num.int(num.new.celltype.snps)` out of `r num.int(num.celltype.snps)` SNPs became newly associated with gene expressions when we applied celltype contexts.
+
+
+### Gene ontology analysis
+
+TODO: write up
+
+```{r Run_GO_Enrichment_1}
+temp.file <- '2_result_single_cell_eqtl.go_overall.RData'
+
+if(!file.exists(temp.file)) {
+
+    gene.tab <- eqtl.tab %>%
+        rename(gene = med.id, cluster = celltype) %>%
+            filter(lodds > lodds.cutoff) %>%
+                select(gene, cluster) %>%
+                    unique() %>%
+                        filter(gene %in% coding.ensg)
+
+    enrichment.overall.tab <-
+        run.enrichment(genes.tot = coding.ensg,
+                       gene.tab = gene.tab)
+
+    save(list = c('enrichment.overall.tab'), file = temp.file)
+} else {
+    load(temp.file)
+}
+```
+
+```{r Run_GO_Enrichment_2}
+temp.file <- '2_result_single_cell_eqtl.go_heritable.RData'
+
+if(!file.exists(temp.file)) {
+
+    gene.tab <- eqtl.tab %>%
+        rename(gene = med.id, cluster = celltype) %>%
+            filter(lodds > lodds.cutoff, cluster != 'Brain_DLPFC') %>%
+                select(gene, cluster) %>%
+                    unique() %>%
+                        filter(gene %in% coding.ensg)
+
+    enrichment.heritable.tab <-
+        run.enrichment(genes.tot = unlist(bulk.genes),
+                       gene.tab = gene.tab)
+
+    save(list = c('enrichment.heritable.tab'), file = temp.file)
+} else {
+    load(temp.file)
+}
+```
+
+
+```{r GO_Func}
+plot.go.tab <- function(.enrichment.tab, go.names) {
+
+    .tab.sorted <- .enrichment.tab %>%
+        filter(go.name %in% go.names) %>%
+            mutate(coverage = n.overlap / n.white) %>%
+                as.data.frame()
+
+    .tab.sorted <- .tab.sorted %>%
+        (function(tab) {
+            .order <- tab %>%
+                mutate(row = cluster, col = go.name, weight = -log10(pval)) %>%
+                    select(row, col, weight) %>%
+                        order.pair();
+            tab %>% mutate(GO = factor(go.name, .order$cols),
+                       cluster = factor(cluster, .order$rows))
+        })
+
+    .aes <- aes(y = GO, x = cluster, fill = -log10(pval), size = coverage)
+
+    ret <- gg.plot(.tab.sorted) + geom_point(.aes, pch = 22) +
+        scale_fill_gradientn(colors = c('white', 'red')) +
+            scale_size_continuous(range = c(1, 4), limits = c(0, 1)) +
+                scale_x_discrete(position = 'top')
+
+    ret <- ret +
+        theme(axis.text.x = element_text(angle = 45, vjust = 0, hjust = 0),
+              axis.title = element_blank())
+
+    return(ret)
+}
+
+take.top.go.tab <- function(.tab, n.top = 5) {
+    .tab %>%
+        group_by(cluster) %>%
+            mutate(coverage = n.overlap / n.white) %>%
+                top_n(n.top, 1 - pval) %>%
+                    arrange(cluster, pval) %>%
+                        as.data.frame()
+}
+
+make.go.flex.tab <- function(.tab) {
+    ret <- .tab %>%
+        mutate(p.value = num.sci(pval)) %>%
+            rename(GO = go.name) %>%
+                select(cluster, GO, n.overlap, coverage, p.value)
+
+    ret <- ret %>%
+    flextable::regulartable() %>%
+    flextable::merge_v(j = c('cluster')) %>%
+    flextable::bold(part = 'header') %>%
+    flextable::align(align = 'center', part = 'header') %>%
+    flextable::align(j = ~ n.overlap, align = 'right', part = 'body') %>%
+    flextable::align(j = ~ coverage, align = 'right', part = 'body') %>%
+    flextable::align(j = ~ p.value, align = 'right', part = 'body') %>%
+    flextable::align(j = ~ cluster, align = 'left', part = 'body') %>%
+    flextable::align(j = ~ GO, align = 'left', part = 'body') %>%
+    flextable::autofit()
+
+    return(ret)
+}
+```
+
+
+```{r}
+bp.tab <- enrichment.overall.tab %>%
+    filter(go.onto == 'biological_process') %>%
+    take.top.go.tab()
+
+cc.tab <- enrichment.overall.tab %>%
+    filter(go.onto == 'cellular_component') %>%
+    take.top.go.tab()
+
+mf.tab <- enrichment.overall.tab %>%
+    filter(go.onto == 'molecular_function') %>%
+    take.top.go.tab()
+```
+
+
+
+
+```{r Fig_GO_BP, fig.width = 6, fig.height = 6, fig.cap = '__Gene ontology enrichment analysis shows distinctive biological processes in different celltypes.__'}
+
+plt.go.bp <- plot.go.tab(enrichment.overall.tab, bp.tab$go.name)
+print(plt.go.bp)
+gg.save(filename = paste0(fig.dir, '/Fig_GO_BP.pdf'), plot = plt.go.bp,
+        width = 6, height = 6)
+```
+
+
+
+```{r Fig_GO_CC, fig.width = 8, fig.height = 6, fig.cap = '__Gene ontology enrichment analysis shows distinctive cellular components in different celltypes.__'}
+
+plt.go.cc <- plot.go.tab(enrichment.overall.tab, cc.tab$go.name)
+print(plt.go.cc)
+gg.save(filename = paste0(fig.dir, '/Fig_GO_CC.pdf'), plot = plt.go.cc,
+        width = 8, height = 6)
+```
+
+
+
+```{r Fig_GO_MF, fig.width = 8, fig.height = 6, fig.cap = '__Gene ontology enrichment analysis shows distinctive molecular functions in different celltypes.__'}
+
+plt.go.mf <- plot.go.tab(enrichment.overall.tab, mf.tab$go.name)
+print(plt.go.mf)
+gg.save(filename = paste0(fig.dir, '/Fig_GO_MF.pdf'), plot = plt.go.mf,
+        width = 8, height = 6)
+```
+
+
+
+
+
+
+
+# Tables
+
+
+```{r Tab_GO_BP, results = 'asis'}
+bp.flex.tab <- make.go.flex.tab(bp.tab)
+bp.flex.tab
+```
+__Table.__ Biological process.
+
+
+```{r Tab_GO_CC, results = 'asis'}
+cc.flex.tab <- make.go.flex.tab(cc.tab)
+cc.flex.tab
+```
+__Table.__ Cellular component.
+
+
+```{r Tab_GO_MF, results = 'asis'}
+mf.flex.tab <- make.go.flex.tab(mf.tab)
+mf.flex.tab
+```
+__Table.__ Cellular component.
+
+
+
+
+
+# References

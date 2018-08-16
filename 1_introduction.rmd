@@ -1,0 +1,24 @@
+---
+title: "A Bayesian mediation analysis uncovers XX causal gene regulatory mechanisms of 13 mental health GWAS traits in 7 Brain cell types"
+author: "Yongjin Park*, Abhishek Sarkar*, Liang He*, (...), Manolis Kellis*"
+bibliography: mediation.bib
+csl: nature.csl
+---
+
+# Abstract
+
+
+Genome-wide association studies have identified thousands of genetic regions associated with complex traits and human disease, but the genes that mediate these associations remain largely uncharacterized. Given the challenge of directly perturbing candidate mediator genes in relevant cell types, computational methods have been developed for predicting mediating genes using genotype information, genetic association scores, and cross-individual gene expression levels in reference cohorts. However, existing statistical methods cannot distinguish causation from correlation, can only handle a single mediating gene, and make several strong assumptions that rarely hold. Here, we instead take a machine learning approach that naturally overcomes these limitations by directly modeling causal and non-causal effects of multiple genes in a Bayesian framework and relying only on summary statistics.
+
+
+
+# Introduction
+
+
+Establishing true causal genes that mediate observed genetic effects can take many years, as it requires directed perturbations that are impossible outside human clinical trials, and are extremely laborious even in cell lines and model organisms like mice. Thus, computational methods have been proposed to address this challenge, by statistical integration of genetic information, gene expression information (or other intermediate phenotypes), and phenotypic information. These methods fall into two classes, Mendelian randomization (MR) and transcriptome-wide association studies (TWAS).
+
+MR [@Davey_Smith2003-xo; @Katan2004-qq] resolves causal directions by using genetic variants as instrumental variables (IV) in causal inference. However, MR assumes no non-causal effecs on phenotype, no horizontal pleiotropy [@Davey_Smith2014-oa] (the SNP affects both genes and phenotypes), and no LD-level linkage (two causal SNPs affecting genes and phenotypes in LD) [@Solovieff2013-eb]. A recent meta-analysis method, MR-Egger, partly relaxes these assumptions by modeling non-causal effects as a bias in regression of GWAS effect sizes on molecular QTL effect sizes [@Bowden2015-ft]. However, it still assumes that genetic variants are not in LD (to perform meta-analysis) and that the estimated effect sizes reflect the true effect sizes of the variants (rather than being inflated by LD).
+
+Recent methods for TWAS made important advances in identifying genes which could be causal. Unlike MR, TWAS aggregates information of multiple SNPs in LD to find genes whose cis-regulatory variants have correlated effect sizes for both gene expression and downstream phenotypes [@Gamazon2015-uw; @Gusev2016-oa; @Mancuso2017-kp]. However, TWAS methods are fundamentally limited because they cannot distinguish between causal mediation, pleiotropy, linkage between causal variants, and reverse causation (Fig 1b), which could lead to inflated false positives as pleiotropy is quite prevalent in genetics [@Solovieff2013-eb]. Moreover, TWAS often finds multiple genes within a locus due to statistical correlations rather than independent biological effects because analysis is performed one gene at a time, ignoring gene-gene correlations.
+
+# References

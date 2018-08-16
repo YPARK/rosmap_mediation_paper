@@ -1,0 +1,211 @@
+---
+author: "Yongjin Park*, Abhishek Sarkar*, Liang He*, (...), Manolis Kellis*"
+bibliography: mediation.bib
+csl: nature.csl
+---
+
+# Online Methods
+
+## Review of regression with summary statistics {-}
+
+A summary association statistic refers to a univariate effect size (a
+regression slope of a simple regression or log-odds ratio in
+case-control studies) measured on each SNP without taking into account
+of LD structure.  On a single trait GWAS, we normally have a vector of
+$p$ summary statistics, effect size $\hat{\theta}_{j}$ and
+corresponding variance $\hat{\sigma}^{2}_{j}$ for each SNP $j\in[p]$
+[@Pasaniuc:2016gm].  However, due to LD (correlations between
+neighboring SNPs), an effect size measured on each single variant
+contains contributions from the neighboring SNPs.  Unless we estimate
+causal variants by fine-mapping, inferring the multivariate effect
+from the univariate one, the univariate effect size of a SNP should
+not be interpreted as unbiased estimation of SNP-level signals
+[@Pasaniuc:2014hq; @Pasaniuc:2016gm].
+
+Here our interest is on the multivariate (true) effect size vector
+$\boldsymbol{\theta}$ across all SNPs in the locus of interest.  In
+principle, fixed effects can be modeled by a multivariate regression
+model, and parameters of this large regression model correspond to the
+multivariate effect $\boldsymbol{\theta}$.  We assume an $n$-vector of
+individual-level phenotypes $\mathbf{y}$ was generated from
+$n\times{p}$ genotype matrix $X$ on $p$ SNPs with the multivariate
+effect sizes $\boldsymbol{\theta}$, and isotropic Gaussian noise
+parameter $\sigma^{2}$.  More precisely,
+
+$$\mathbf{y} \sim \mathcal{N}\!\left(X \boldsymbol{\theta}, \sigma^{2}I\right).$$ {#eq:mvn}
+
+The regression with summary statistics (RSS) model [@Zhu:2016bo;
+@Hormozdiari:2014kq] provides a principled way to describe a
+generative model of the GWAS summary data.  We assume the observed
+GWAS summary effect sizes $\hat{\boldsymbol{\theta}} \equiv
+(\hat{\theta}_{1}, \ldots,\hat{\theta}_{p})^{\top}$ were generated
+from the same multivariate effects $\boldsymbol{\theta}$ of
+individual-level multivariate GWAS model ([@eq:mvn]).
+
+$$ \hat{\boldsymbol{\theta}} \sim \mathcal{N}\!\left(S R S^{-1} \boldsymbol{\theta}, SRS \right),$$ {#eq:rss}
+
+where we denote the ${p{\times}p}$ linkage disequilibrium (LD) matrix
+$R$ and the diagonal matrix of expected squares, $S$ with each element
+$S_{jj} = \sqrt{\mathbb{E}[\hat{\theta}_{j}^{2}]} =
+\sqrt{{\hat\theta}_{j}^{2}/n + \sigma_{j}^{2}}$.  In practice we
+estimate the LD matrix $\hat{R}$ from a standardized genotype matrix
+of reference cohort by taking crossproduct, $\hat{R}=X^{\top}X/(n-1)$.
+While other methods regularize $\hat{R}$ matrix by adding ridge
+regression penalty on the diagonal matrix [@Wen:2014hb], here we
+regularized $\hat{R}$ by dropping variance components corresponding to
+small eigenvalues ($\lambda$) [@Shi:2016bn].  We use a fixed cutoff
+$\lambda < 10^{-2}$, but our results were robust to the different
+cutoff values such as $\lambda < 10^{-3}$ and $\lambda < 10^{-1}$.
+
+## Derivation of the causal mediation model in RSS{-}
+
+We derive the mediation model ([@eq:mediation.model]), assuming that
+the observed univariate eQTL effects on a mediator $k$,
+$\hat{\boldsymbol{\alpha}}_{k} \equiv (\hat{\alpha}_{1k}, \ldots,
+\hat{\alpha}_{pk})^{\top}$ are generated from the RSS model with mean
+$\mathbb{E}[\hat{\boldsymbol{\alpha}}_{k}] = S_{\alpha} R
+S_{\alpha}^{-1} \boldsymbol{\alpha}_{k}$ with expected squares
+$S_{\alpha}$ of eQTL effects.  Here we assume standard errors of GWAS
+effects can be substituted with standard errors of QTL effects up to
+some scaling factor, i.e., $S_{\alpha} = cS$ with some real number $c
+> 0$, because association statistic is mainly determined by the
+underlying minor allele frequencies and samples sizes, and this allows
+us to rewrite the expectation of mediation effect
+([@eq:mediation.effect]):
+
+<!-- = SRS^{-1}\left(\sum_{k=1}^{K} \boldsymbol{\alpha}_{k} \beta_{k} + \boldsymbol{\gamma}\right) -->
+
+$$\mathbb{E}[\hat{\boldsymbol{\theta}}] = \sum_{k=1}^{K} \left(S_{\alpha} R S_{\alpha}^{-1} \boldsymbol{\alpha}_{k}\right) \beta_{k} + SRS^{-1} \boldsymbol{\gamma}$$
+
+where the constant factor $c$ cancels.  With no measurement error,
+i.e., $\mathbb{E}[\hat{\boldsymbol{\alpha}}] =
+\hat{\boldsymbol{\alpha}}$, we can reasonably assume:
+
+$$\mathbb{E}[\hat{\boldsymbol{\theta}}] \approx \sum_{k} \hat{\boldsymbol{\alpha}}_{k} \beta_{k} + SRS^{-1}\boldsymbol{\gamma}.$$
+
+Substitution of this mean effect to the RSS model ([@eq:rss]) yields
+the probabilistic model for CaMMEL ([@eq:mediation.model]).
+
+
+## Variational Bayes inference of the mediation model {-}
+
+A key challenge in fitting the causal mediation model
+([@eq:mediation.model]) is dealing with the covariance matrix in the
+likelihood. We exploit the spectral transformation of the LD matrix to
+make the model inference more amenable [@Lippert:2011fe].  We take
+singular value decomposition of standardized genotype matrix,
+$(n)^{-1/2}X = U D V^{\top}$, and decompose LD matrix into $\hat{R} =
+V D^{2} V^{\top}$, exposing that the effective number of sample size
+$\tilde{n}$ is bounded by the sample size of reference panel,
+$\tilde{n} < n$, after the regularization $\hat{R}$.  Defining
+${\tilde{\mathbf{y}} \equiv V^{\top} S^{-1}\hat{\boldsymbol{\theta}}}$
+we obtain equivalent, but fully factorized, multivariate Gaussian
+model $$\tilde{\mathbf{y}} \sim \mathcal{N}\!\left( \sum_{k=1}^{K}
+V^{\top} S^{-1} \hat{\boldsymbol{\alpha}}_{k} \beta_{k} + D^{2}
+V^{\top} S^{-1} \boldsymbol{\gamma}, D^{2}\right).$$
+{#eq:mediation.factored}
+
+We efficiently fit the model using black box variational inference
+[@Ranganath:2014tb;@Paisley:2012tz] with a novel reparameterization
+trick [@Wang:2013vj; @Park2017-vh].  Normally a high-dimensional
+multivariate regression is intractable problem since the total amount
+of model variance blows up as a function of dimensions ($p$).
+However, instead of dealing with large number of parameters ($p$
+SNPs), we deal with smaller $\tilde{n}$-dimensional aggregate random
+variables ($\tilde{n} < n \ll p$), a linear combination of
+$p$-dimensional effects.  More precisely we define $$\eta_{i} \equiv
+\sum_{j=1}^{p} V_{ji} S_{j}^{-1} \gamma_{j},\quad \xi_{i} \equiv
+\sum_{j=1}^{p} V_{ji} S_{j}^{-1} \sum_{k=1}^{K} \hat{\alpha}_{jk}
+\beta_{k}$$ to rewrite the transformed log-likelihood of the model for
+each eigen component $i$: 
+
+$$\ln P(\tilde{y}_{i}|\eta_{i}, \xi_{i})
+= - \frac{1}{2} \ln d_{i}^{2}
+- \frac{1}{2d_{i}^{2}}(\tilde{y}_{i} - d_{i}^{2} \eta_{i} - \xi_{i})^{2} - \frac{1}{2} \ln (2\pi).$$
+
+This reformulation not only achieves faster convergence by reducing
+variance [@Wang:2013vj; @Kingma:2015tb], but we also gain
+computational efficiency that we can sample all the eigen components
+independently in parallel taking full accounts of the underlying LD
+structure between SNPs.
+
+The overall algorithm proceeds as follows: We first update surrogate
+distributions of $q(\xi)\approx\mathcal{N}\!\left(\mu_{\xi},
+\nu_{\xi}\right)$ and
+$q(\eta)\approx\mathcal{N}\!\left(\mu_{\eta},\nu_{\eta}\right)$ by
+minimizing Kullback-Leibler (KL) divergence between the surrogate $q$
+and true distribution $P$, $D_{\mathsf{KL}}(q\|P)$, by taking
+stochastic gradient steps with respect to the mean
+$\nabla_{\mu_{\xi}}, \nabla_{\mu_{\eta}}$ and variance
+$\nabla_{\nu_{\xi}},\nabla_{\nu_{\eta}}$ [@Paisley:2012tz]; we then
+then back-propagate this gradient to the gradient with respect to the
+original mean $\nabla_{\mu_{\beta}},\nabla_{\mu_{\gamma}}$ and
+variance parameters $\nabla_{\nu_{\beta}},\nabla_{\nu_{\gamma}}$ to
+eventually find $q(\beta)\approx\mathcal{N}\!\left(\mu_{\beta},
+\nu_{\beta}\right)$ and $q(\gamma) \approx
+\mathcal{N}\!\left(\mu_{\gamma}, \nu_{\gamma}\right)$.  We formulate
+the variational mean $\mu_{\beta}$ and variance $\nu_{\beta}$ of the
+spike-slab distribution following the previous derivations
+[@Carbonetto:2012ku] (see our technical paper [@Park2017-vh] for
+details).
+
+
+
+## Celltype-deconvolved multivariate eQTL estimation
+
+### Bayesian modeling of total genetic effects with the deconvolved profiles
+
+We model total genetic effect on bulk RNA-seq expression level as a
+linear combination of the genetic effects in multiple celltypes.  We
+assume celltype $k$'s proportions on individual sample $i$, $W_{ik}$,
+are shared across genes; within each gene genetic effects of celltype
+$k$ on individual $i$ are characterized as $\eta_{ik} = \sum_{j =
+1}^{p} X_{ij} \theta_{jk}$ with celltype-specific multivariate effect
+size $\theta_{jk}$ for all SNP $j \in [p]$.  As we have estimated
+$\hat{W}_{ik}$ in the deconvolution step, we simply substitute true
+$W_{ik}$ with the plug-in estimates $\hat{W}_{ik}$.  We represent
+total genetic effect $\eta_{i} = \sum_{k} \hat{W}_{ik} \eta_{ik}
+\beta_{k}$ with additional scaling factor $\beta_{k}$.
+
+### Removing unwanted non-genetic confounders
+
+Before we carry out the multivariate eQTL analysis, it is crucial to
+identify the non-genetic confounding factors.  With a proper
+correction of confounding factors, we can improve statistical powers
+of the regression model fitting and avoid spurious associations.
+Instead of relying on matrix factorization [@Stegle2012-pp], we
+adaptively identify potential non-genetic confounders based on a
+modified version of the half-sibling regression [@Scholkopf2016-td],
+or as in `RUV-g` method [@Gagnon-Bartsch2012-jc].
+
+Suppose we want to estimate non-genetic factors on a subset of genes
+located in a particular chromosome.  Wirst note that non-genetic
+confounding effects prevalently exist across many genes, almost
+invariantly to the choice of their genomic locations.  We select a set
+of "control" genes with the genes of interest from genes in different
+chromosomes, but strongly correlated (potentially due to non-genetic
+causes).  Since we select the control genes from a different genomic
+location, they are rarely affected by shared _cis_-regulatory
+mechanisms.  If we found shared genetic correlations with some control
+genes, we could eliminate the correlated controls.  We construct
+non-genetic covariate matrix $C$ including candidate control genes.
+
+### Stochastic variational inference
+
+In full model we model mean effect:
+
+$$\eta_{i} = \sum_{k=1}^{q} W_{ik} \sum_{j=1}^{p} X_{ij} \theta_{jk} \beta_{k} + \sum_{l=1}^{r} C_{il} \omega_{l}.$$
+
+We initialized $\Theta$ and $\boldsymbol{\beta}$ by singular value
+decomposition of $X^{\top} W = U D V^{\top}$ where $W$'s each column
+$\mathbf{w}_{k} = \mathbf{y} \cdot \mathbf{f}_{k}$ was weighted by the
+corresponding column of the cell type proportion matrix $W$.  We
+assume _a priori_ $\theta_{jk}, \beta_{k}, \omega_{l} \sim \pi
+\mathcal{N}\!\left(0, \tau\right) + (1-\pi) \delta_{0}$ to handle
+collinearity across celltypes and SNPs within linkage disequilibrium.
+
+As there exists no closed form for the posterior inference of these
+regression coefficients, we conduct variational approximation with
+stochastic search [@Paisley2012-fs].  Source code and implementation
+details can be found in `https://github.com/ypark/fqtl` and our
+previous paper [@Park2017-vh].

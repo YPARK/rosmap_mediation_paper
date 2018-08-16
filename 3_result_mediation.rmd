@@ -1,0 +1,29 @@
+---
+author: "Yongjin Park*, Abhishek Sarkar*, Liang He*, (...), Manolis Kellis*"
+bibliography: mediation.bib
+csl: nature.csl
+---
+
+## CaMMEL discovers XX causal genes in bulk eQTL
+
+
+
+## CaMMEL discovers XX causal genes in deconvolved eQTL
+
+table for number of genes for each traits
+
+### global clustering
+
+### local example 1
+
+
+
+## Joint mediation analysis XX pleiotropic genes
+
+
+
+### global clustering
+
+
+### local example 1
+
