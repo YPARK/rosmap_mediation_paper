@@ -1,10 +1,123 @@
 ---
 author: "Yongjin Park*, Abhishek Sarkar*, Liang He*, (...), Manolis Kellis*"
 bibliography: mediation.bib
-csl: nature.csl
+csl: apa.csl
 ---
 
+```{r GlobOpt, include = FALSE}
+fig.dir <- './Fig/3_mediation/'
+dir.create(fig.dir, recursive = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.path = fig.dir, fig.width = 4, fig.height = 4)
+
+library(dplyr)
+library(tidyr)
+library(readr)
+source('Util-Figure.R')
+
+num.int <- function(x) format(x, big.mark = ',')
+num.sci <- function(x, d=2) format(x, scientific = TRUE, digits = d)
+num.round <- function(x, d=2) round(x, d)
+fast.similarity <- function(...) suppressMessages(text2vec::sim2(...))
+################################################################
+```
+
+```{r Read_eQTL_data}
+################################################################
+## Read eQTL data with all the significant SNPs (lodds > 0 in any)
+ct <- c('bulk', 'ast', 'inh', 'ex', 'oli', 'mic', 'end', 'opc')
+ct.names <- c('Brain_DLPFC', 'Astrocyte', 'Inhibitory_Neuron', 'Excitatory_Neuron', 'Oligodendrocyte', 'Microglia', 'Endothelial', 'Oligo_Progenitor')
+temp.file <- '2_result_single_cell_eqtl.RData'
+if(!file.exists(temp.file)) {
+    eqtl.file <- './eqtl_results/rosmap_multivar_eqtl_combined.txt.gz'
+    eqtl.tab <- read_tsv(eqtl.file) %>%
+        mutate(celltype = gsub(celltype, pattern = '_tf', replacement = '')) %>%
+            mutate(celltype = factor(celltype, ct, ct.names)) %>%
+                mutate(celltype = as.character(celltype))
+    save(list = 'eqtl.tab', file = temp.file) 
+} else {
+    load(temp.file)
+}
+################################################################
+```
+
+```{r Read_Mediation}
+################################################################
+med.bulk.file <- 'mediation_bulk/mediation_summary_hyp.combined.gz'
+med.celltype.file <- 'mediation_celltype/mediation_summary_hyp.combined.gz'
+twas.bulk.file <- 'twas_bulk/twas_summary_hyp.combined.gz'
+twas.celltype.file <- 'twas_celltype/twas_summary_hyp.combined.gz'
+perm.bulk.file <- 'mediation_bulk/twas_permutation.combined.gz'
+perm.celltype.file <- 'mediation_celltype/twas_permutation.combined.gz'
+
+permutation.tab <- c(perm.bulk.file, perm.celltype.file) %>%
+    lapply(FUN = read_tsv) %>%
+    bind_rows() %>%
+    mutate(method = 'permutation')
+
+mediation.tab <- c(med.bulk.file, med.celltype.file) %>%
+    lapply(FUN = read_tsv) %>%
+    bind_rows() %>%
+    mutate(method = 'mediation')
+
+twas.tab <- c(med.bulk.file, med.celltype.file) %>%
+    lapply(FUN = read_tsv) %>%
+    bind_rows() %>%
+    mutate(method = 'twas')
+
+################################################################
+
+## lodds.cutoff <- 0
+
+lodds.cutoff <- log(0.25) - log(0.75)
+
+
+
+
+## End of R code
+################################################################
+```
+
+
+
+
+
+
+### Bayesian model-based approach tightly controls 
+
+
+```{r}
+
+.perm <- permutation.tab %>% select(ensg, celltype, gwas.trait, p.val)
+
+
+
+mediation.tab %>%
+    filter(lodds > lodds.cutoff) %>%
+    left_join(.perm) %>%
+    head() %>% as.data.frame()
+
+
+
+    group_by(celltype, gwas.trait) %>%
+    summarize(n.mediation = n())
+
+permutation.tab %>% 
+
+## for each celltype: show trends (number of hits; median p-value for TWAS)
+
+
+
+
+
+```
+
+
+
+
 ## CaMMEL discovers XX causal genes in bulk eQTL
+
+
 
 
 
@@ -26,4 +139,27 @@ table for number of genes for each traits
 
 
 ### local example 1
+
+
+
+# Supplementary Figures
+
+
+## Supp.Fig. 
+
+```{r Fig_Mediation_PIP, fig.width = 10, fig.height = 10}
+plt <- 
+    gg.plot(mediation.tab, aes(x = 1/(1 + exp(-lodds)))) +
+    geom_density(color = 'gray40', fill = 'gray40') +
+    facet_grid(gwas.trait ~ celltype) +
+    xlab('posterior inclusion probability') +
+    geom_vline(xintercept = 1/(1+exp(-lodds.cutoff)), col = 2, lty = 2, size = .5) +
+    theme(strip.text.y = element_text(angle = 0, hjust = 0, vjust = .5)) +
+    theme(axis.text = element_text(size = 5))
+print(plt)
+gg.save(fig.dir %&&% '/Fig_Mediation_PIP.pdf', width = 10, height = 10)
+```
+**Legend**
+
+
 

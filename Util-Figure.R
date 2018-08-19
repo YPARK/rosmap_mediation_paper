@@ -125,6 +125,7 @@ gg.plot <- function(...) {
         theme(plot.background = element_blank(),
               panel.background = element_blank(),
               strip.background = element_blank(),
+              strip.text = element_text(size = 6),
               legend.background = element_blank(),
               axis.text = element_text(size = 8),
               axis.title = element_text(size = 8),

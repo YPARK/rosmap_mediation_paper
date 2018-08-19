@@ -1,9 +1,11 @@
 ---
+author: "Yongjin Park, Liang He, (...), Manolis Kellis*"
 bibliography: mediation.bib
 csl: apa.csl
 ---
 
 ```{r GlobOpt, include = FALSE}
+options(stringsAsFactors = FALSE)
 fig.dir <- './Fig/2_single_cell_eqtl/'
 dir.create(fig.dir, recursive = TRUE)
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
@@ -17,20 +19,43 @@ num.int <- function(x) format(x, big.mark = ',')
 num.sci <- function(x, d=2) format(x, scientific = TRUE, digits = d)
 num.round <- function(x, d=2) round(x, d)
 fast.similarity <- function(...) suppressMessages(text2vec::sim2(...))
+.read.tsv <- function(...) suppressMessages(read_tsv(...))
+.read.delim <- function(...) suppressMessages(read_delim(...))
+.rm.str <- function(...) gsub(..., replacement = '')
 ################################################################
 ```
 
-```{r}
+```{r Read_eQTL_data}
 ## Read eQTL data with all the significant SNPs (lodds > 0 in any)
-ct <- c('bulk', 'ast', 'inh', 'ex', 'oli', 'mic', 'end', 'opc')
-ct.names <- c('Brain_DLPFC', 'Astrocyte', 'Inhibitory_Neuron', 'Excitatory_Neuron', 'Oligodendrocyte', 'Microglia', 'Endothelial', 'Oligo_Progenitor')
+ct.0 <- c('ast', 'inh', 'ex', 'oli', 'mic', 'end', 'opc')
+ct.names.0 <- c('Astrocyte',
+                'Inhibitory_neuron',
+                'Excitatory_neuron',
+                'Oligodendrocyte',
+                'Microglia',
+                'Endothelial',
+                'Oligodendrocyte_progenitor')
 
-eqtl.file <- './eqtl_results/rosmap_multivar_eqtl_combined.txt.gz'
-eqtl.tab <- read_tsv(eqtl.file) %>%
-    mutate(celltype = gsub(celltype, pattern = '_tf', replacement = '')) %>%
-    mutate(celltype = factor(celltype, ct, ct.names)) %>%
-    mutate(celltype = as.character(celltype))
+ct <- c('bulk', ct.0)
+ct.names <- c('Brain_DLPFC', ct.names.0)
 
+temp.file <- '2_result_single_cell_eqtl.RData'
+
+if(!file.exists(temp.file)) {
+    eqtl.file <- './eqtl_results/rosmap_multivar_eqtl_combined.txt.gz'
+    eqtl.tab <- read_tsv(eqtl.file) %>%
+        mutate(celltype = gsub(celltype, pattern = '_tf', replacement = '')) %>%
+            mutate(celltype = factor(celltype, ct, ct.names)) %>%
+                mutate(celltype = as.character(celltype))
+
+    save(list = 'eqtl.tab', file = temp.file) 
+} else {
+    load(temp.file)
+}
+```
+
+
+```{r}
 ## A list of protein coding genes
 rosmap.genes <- read_tsv('rosmap_rows.txt.gz') %>%
     separate(col = tracking_id, into = c('ensg', 'remove'), sep = '[.]') %>%
@@ -303,6 +328,213 @@ gg.save(filename = paste0(fig.dir, '/Fig_Celltype_Jaccard.pdf'),
 ```
 
 Since we applied sparse Bayesian prior probability on the genetic effects of factored eQTL models.  We found `r num.int(single.celltype.genes)` genes are only active in a single cell type (`r num.round(100 * (single.celltype.genes / tot.celltype.tab$heritable.genes))`%).  Interestingly we discovered that `r num.int(num.new.celltype.snps)` out of `r num.int(num.celltype.snps)` SNPs became newly associated with gene expressions when we applied celltype contexts.
+
+
+### 7 Examples
+
+
+```{r}
+## select top 3 genes to visualize for each chategory
+genes.show <-
+    eqtl.tab %>% group_by(med.id, celltype) %>%
+    slice(which.min(lfsr)) %>%
+    as.data.frame() %>%
+    group_by(celltype) %>%
+    top_n(n = 3, 1 - lfsr) %>%
+    as.data.frame() %>%
+    select(med.id, snp.loc) %>%
+    unique()
+
+snps.show <- 
+    genes.show %>%
+    left_join(eqtl.tab) %>%
+    group_by(med.id, snp.loc, celltype) %>%
+    slice(which.min(lfsr)) %>%
+    as.data.frame()
+################################################################
+```
+
+
+```{r Read_ROSMAP_data}
+rosmap.covar <- .read.tsv('ROSMAP_EXPR/phenotypes.txt.gz') %>%
+    mutate(y.pos = 1:n())
+
+rosmap.svd <- scale(rosmap.data) %>%
+    (function(x) {x[is.na(x)] <- 0; return(x) }) %>%
+    svd() %>%
+    (function(x) x$u)
+
+rosmap.data <- paste0('ROSMAP_EXPR/vsn/chr', 1:22, '.data.gz') %>%
+    lapply(FUN = .read.tsv, col_names = FALSE) %>%
+    bind_cols()
+
+rosmap.genes <- paste0('ROSMAP_EXPR/vsn/chr', 1:22, '.info.gz') %>%
+    lapply(FUN = .read.tsv, col_names = c('ensg', 'chr', 'tss', 'tes', 'hgnc')) %>%
+    bind_rows() %>%
+    mutate(hgnc = if_else(is.na(hgnc), ensg, hgnc)) %>%
+    mutate(gene.pos = 1:n())
+
+decon.tab <- read.table('decon_freeze_20180813.csv', sep = ',', header = TRUE) %>%
+    select_(.dots = c('id', paste0(setdiff(ct, 'bulk'), '_tf'))) %>%
+    (function(x) {colnames(x) <- c('projid', setdiff(ct, 'bulk')); return(x)})
+
+fam.tab <- .read.delim('ROSMAP_GENO/chr1.fam',
+                       delim = ' ',
+                       col_names = c('fid', 'iid'),
+                       col_types = 'cc____') %>%
+    mutate(x.pos = 1:n()) %>%
+    mutate(projid = .rm.str(iid, pattern = 'ROS')) %>%
+    mutate(projid = .rm.str(projid, pattern = 'MAP')) %>%
+    mutate(projid = as.integer(projid))
+
+ind.matched <- decon.tab %>%
+    mutate(d.pos = 1:n()) %>%
+    select(projid, d.pos) %>%
+    left_join(fam.tab %>% select(projid, x.pos)) %>%
+    left_join(rosmap.covar %>% select(projid, y.pos)) %>%
+    na.omit() %>%
+    unique()
+
+W <- decon.tab[ind.matched$d.pos, -1, drop = FALSE] %>%
+    (function(x) {
+        .pos <- match(ct.0, colnames(x))
+        colnames(x) <- ct.names.0
+        return(x)
+    })
+
+covar.cols <- c('amyloid_sqrt', 'tangles_sqrt', 'cog_ep_random_slope', 'msex',
+                'studyn', 'age_death', 'educ', 'RIN.by.BSP')
+
+covar.mat <- (rosmap.covar[ind.matched$y.pos, ]) %>%
+    select_(.dots = covar.cols) %>%
+    as.matrix() %>%
+    scale() %>%
+    (function(x) {x[is.na(x)] <- 0; return(x)})
+
+rosmap.PC <- rosmap.svd[ind.matched$y.pos, 1:15] %>%
+    scale() %>%
+    (function(x) {x[is.na(x)] <- 0; return(x)})
+################################################################
+```
+
+
+
+
+
+```{r}
+
+
+## snps.show
+
+.tab <- snps.show %>% filter(med.id == "ENSG00000222014")
+
+.tab <- .tab %>% arrange(desc(abs(theta)))
+
+.chr <- unique(.tab$chr)[1]
+.rs <- unique(.tab$rs)[1]
+.hgnc <- unique(.tab$hgnc)[1]
+
+.plink <- zqtl::read.plink(paste0('ROSMAP_GENO/chr', .chr))
+
+.snp <- which(.plink$BIM[, 4] == .tab$snp.loc[1])
+
+xx <- .plink$BED[ind.matched$x.pos, .snp] %>% unlist()
+
+.gene <- rosmap.genes %>%
+    filter(ensg == unique(.tab$med.id)) %>%
+    select(gene.pos) %>%
+    unlist()
+
+yy <- rosmap.data[ind.matched$y.pos, .gene] %>% unlist() %>%
+    log() %>%
+    scale()
+
+yy <- lm(yy ~ covar.mat + rosmap.PC) %>%
+    (function(y) y$residual) %>%
+    scale()
+
+## show step-wise conditional analysis
+
+bulk.df <- data.frame(x = xx,
+                      y = yy,
+                      celltype = 'Brain_DLPFC',
+                      x.f = scale(xx))
+
+yy.hat <- lm(yy ~ scale(xx)) %>%
+    (function(y) y$fitted.values) %>%
+    scale()
+
+mk.interaction <- function(.sub.df) {
+    .sub.df %>% mutate(x.f = scale(x) * fraction, y = y)
+}
+
+tot.df <- 
+    data.frame(x = xx, y = yy, W) %>%
+    gather(key = 'celltype', value = 'fraction', -x, -y) %>%
+    group_by(celltype) %>%
+    do(mk.interaction(.)) %>%
+    as.data.frame() %>%
+    mutate(celltype = as.character(celltype)) %>%
+    bind_rows(bulk.df) %>%
+    left_join(.tab %>% select(celltype, theta, theta.sd, lodds, lfsr)) %>%
+    mutate(celltype = factor(celltype, ct.names)) %>%
+    arrange(x)
+
+gg.plot(tot.df, aes(x = x.f, y = y, fill = x)) +
+    facet_wrap(~ celltype, nrow = 2, scales = 'fixed') +
+    geom_point(alpha = .5, size = .5, shape = 21) +
+    geom_smooth(method = 'lm', se = FALSE, color = 'black', size = .25) +
+    xlab(paste('scaled SNP', .rs ,'* celltype')) +
+    ylab(paste('scaled log2 expression of', .hgnc)) +
+    theme(axis.text = element_text(size = 4)) +
+    scale_fill_gradientn('dosage', colors = c('blue','white','red'), limits = c(0,2))
+
+
+
+
+
+gg.plot(.df, aes(x = x * fraction, y = y)) +
+    facet_wrap(~ celltype, scales = 'free', nrow = 1) +
+    geom_point(col = 'gray50')
+
+
+
+ +
+    geom_smooth(method = 'lm', se = FALSE)
+
+##    facet_grid(x ~ celltype, scales = 'free')
+
+
+################################################################
+## 1. 
+
+
+```
+
+
+
+- high vs low celltype fraction
+
+- eQTL scatter
+
+```{r}
+## Need to load ROSMAP data
+
+
+
+
+
+## ROSMAP_EXPR/vsn/chr1.data.gz
+## ROSMAP_EXPR/
+
+## For each genotype group, show correlationb between celltype and gene expression
+
+
+
+```
+
+
+
 
 
 ### Gene ontology analysis

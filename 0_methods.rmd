@@ -1,26 +1,23 @@
 ---
+title: Methods
 author: "Yongjin Park*, Abhishek Sarkar*, Liang He*, (...), Manolis Kellis*"
 bibliography: mediation.bib
-csl: nature.csl
+csl: apa.csl
 ---
+
+
+# Methods
+
 
 # Online Methods
 
 ## Review of regression with summary statistics {-}
 
-A summary association statistic refers to a univariate effect size (a
-regression slope of a simple regression or log-odds ratio in
-case-control studies) measured on each SNP without taking into account
-of LD structure.  On a single trait GWAS, we normally have a vector of
-$p$ summary statistics, effect size $\hat{\theta}_{j}$ and
-corresponding variance $\hat{\sigma}^{2}_{j}$ for each SNP $j\in[p]$
-[@Pasaniuc:2016gm].  However, due to LD (correlations between
-neighboring SNPs), an effect size measured on each single variant
-contains contributions from the neighboring SNPs.  Unless we estimate
-causal variants by fine-mapping, inferring the multivariate effect
-from the univariate one, the univariate effect size of a SNP should
-not be interpreted as unbiased estimation of SNP-level signals
-[@Pasaniuc:2014hq; @Pasaniuc:2016gm].
+
+
+A summary association statistic refers to a univariate effect size (a regression slope of a simple regression or log-odds ratio in case-control studies) measured on each SNP without taking into account of LD structure.  On a single trait GWAS, we normally have a vector of $p$ summary statistics, effect size $\hat{\theta}_{j}$ and corresponding variance $\hat{\sigma}^{2}_{j}$ for each SNP $j\in[p]$ [@Pasaniuc:2016gm].  However, due to LD (correlations between neighboring SNPs), an effect size measured on each single variant contains contributions from the neighboring SNPs.  Unless we estimate causal variants by fine-mapping, inferring the multivariate effect from the univariate one, the univariate effect size of a SNP should not be interpreted as unbiased estimation of SNP-level signals [@Pasaniuc:2014hq; @Pasaniuc:2016gm].
+
+
 
 Here our interest is on the multivariate (true) effect size vector
 $\boldsymbol{\theta}$ across all SNPs in the locus of interest.  In
